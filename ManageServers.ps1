@@ -1,4 +1,4 @@
-<#
+﻿<#
 .Description
     Creates Variables for server groups so you don't have to remember server names 
     Replace server values with FQDN or other target value of the remote servers. 
@@ -25,6 +25,49 @@ function Make-Credential{
 
 
 
+
+function Invoke-Copy-To{
+<#
+.Description
+    Invoke-Copy-To
+    Creates a session to copy from local to the remote server
+.parameter servername
+    Remote server
+.parameter sourcefile
+    Local file to copy
+.parameter destinationFile
+    Path and name of the destination file
+.parameter resetusername
+    Optional - used to reset the credential
+#>
+    param(
+    [Parameter(Mandatory)]
+    [string] $servername,
+    [Parameter(Mandatory)]
+    [string] $sourcefile,
+    [Parameter(Mandatory)]
+    [string] $destinationFile,
+    [switch] $justcopy = $false,
+    [switch] $resetusername = $false
+        )
+    if(!$Global:credential -or $resetusername){
+        Make-Credential
+    }
+    Invoke-Command -ComputerName $servername -Credential $Global:credential -ArgumentList $destinationFile -ScriptBlock {
+        if (!(Test-Path -Path $args[0])){mkdir $args[0]}}
+            $session = New-PSSession -ComputerName $servername -Credential $Global:credential
+            Copy-Item -Path $sourcefile -Destination $destinationFile -ToSession $session -Force
+            if(!$justcopy){
+                Invoke-Command -FilePath $profile -Session $session
+                Enter-PSSession -Session $session
+
+            }
+        }
+    }
+}
+
+
+
 function Get-Systeminfo{
 <#
 .Description
@@ -45,6 +88,7 @@ function Get-Systeminfo{
     }
     Invoke-Command -ComputerName $servername -Credential $Global:credential -ScriptBlock {systeminfo /fo csv | ConvertFrom-Csv | select OS*, System*, Hotfix* | Format-List }
 }
+
 
 
 
@@ -127,148 +171,6 @@ function Get-FreeSpace{
 
 
 
-function Get-WebsiteStatus{
-<#
-.Description
-    Get-WebsiteStatus
-    Gets the status of whether the sites are started or stopped
-.parameter servername
-    Server(s) to search
-.parameter resetusername
-    Optional - used to reset the credential
-#>
-    param(
-    [Parameter(Mandatory)]
-    [string[]] $servername,
-    [switch] $resetusername = $false
-        )
-    if(!$Global:credential -or $resetusername){
-        Make-Credential
-    }
-    Invoke-Command -ComputerName $servername -Credential $Global:credential -ScriptBlock {
-        Import-Module -Name WebAdministration
-        $s = Get-Website
-        foreach ($i in $s){
-            if ($i.state -eq 'Stopped'){
-                Write-Host $env:COMPUTERNAME '////' $i.name '---' $i.state -ForegroundColor Red}
-                else{
-                Write-Host $env:COMPUTERNAME '////' $i.name '---' $i.state -ForegroundColor Green}
-                }
-        }
-}
-
-
-
-
-function Get-AppPools{
-<#
-.Description
-    Get-AppPools
-    Gets the app pools on the remote server
-.parameter servername
-    Server(s) to search
-.parameter resetusername
-    Optional - used to reset the credential
-#>
-    param(
-    [Parameter(Mandatory)]
-    [string[]] $servername,
-    [switch] $resetusername = $false
-        )
-    if(!$Global:credential -or $resetusername){
-        Make-Credential
-    }
-    Invoke-Command -ComputerName $servername -Credential $Global:credential -ScriptBlock {
-        Import-Module -Name WebAdministration
-        $apppools = gci IIS:\AppPools
-        foreach ($apppool in $apppools){
-            $Pool                     = $apppool.Name
-            $CLR                      = $apppool.ManagedRuntimeVersion
-            $bit32                    = $apppool.Enable32BitAppOnWin64
-            $autostart                = $apppool.AutoStart
-            $State                    = $apppool.State
-        [PSCustomObject]@{
-            AppPool                   = $Pool
-            CLR                       = $CLR
-            bit32                     = $bit32
-            autostart                 = $autostart
-            State                     = $State
-            }
-        }
-    }
-}
-
-
-
-
-function Get-Websites{
-<#
-.Description
-    Get-Websites
-    Gets a list of the websites on the remote server(s)
-.parameter servername
-    Server(s) to search
-.parameter resetusername
-    Optional - used to reset the credential
-#>
-    param(
-    [Parameter(Mandatory)]
-    [string[]] $servername,
-    [switch] $resetusername = $false
-        )
-    if(!$Global:credential -or $resetusername){
-        Make-Credential
-    }
-    Invoke-Command -ComputerName $servername -Credential $Global:credential -ScriptBlock {
-        Import-Module -Name WebAdministration
-        Get-ChildItem -Path IIS:SSLBindings | ForEach-Object -Process `
-        {
-            if ($_.Sites)
-            {
-                $certificate = Get-ChildItem -Path Cert:\LocalMachine\My |
-                    Where-Object -Property Thumbprint -EQ -Value $_.Thumbprint
-
-                [PSCustomObject]@{
-                    Sites                       = $_.Sites.Value
-                    IPAddress                   = $_.IPAddress
-                    CertificateFriendlyName     = $_.FriendlyName
-                    CertificateDnsNameList      = $_.DnsNameList
-                    CertificateNotAfter         = $_.NotAfter
-                    CertificateIssuer           = $_.Issuer
-                    CertificateThumbprint       = $_.Thumbprint
-                }
-            }
-        }
-    }
-}
-
-
-
-function Get-Certificates{
-<#
-.Description
-    Get-Certificates
-    Gets a list of the certificates on the remote server
-.parameter servername
-    Server(s) to search
-.parameter resetusername
-    Optional - used to reset the credential
-#>
-    param(
-    [Parameter(Mandatory)]
-    [string[]] $servername,
-    [switch] $resetusername = $false
-        )
-    if(!$Global:credential -or $resetusername){
-        Make-Credential
-    }
-    Invoke-Command -ComputerName $servername -Credential $Global:credential -ScriptBlock {
-        gci Cert:\LocalMachine\My | Format-List -Property Thumbprint, NotAfter, Issuer, Subject, EnhancedKeyUsageList, HasPrivateKey }
-}
-
-
-
-
 function Get-Remote-Service{
 <#
 .Description
@@ -283,9 +185,9 @@ function Get-Remote-Service{
 #>
     param(
     [Parameter(Mandatory)]
-    [string[]] $servername,
+    [string] $servername,
     [Parameter(Mandatory)]
-    [string[]] $servicename,
+    [string] $servicename,
     [switch] $resetusername = $false
         )
     if(!$Global:credential -or $resetusername){
@@ -293,5 +195,179 @@ function Get-Remote-Service{
     }
     Invoke-Command -ComputerName $servername -Credential $Global:credential -ScriptBlock {
         gci Cert:\LocalMachine\My | Format-List -Property Thumbprint, NotAfter, Issuer, Subject, EnhancedKeyUsageList, HasPrivateKey }
+}
+
+
+
+
+function Copy-Between-Servers{
+<#
+.Description
+    Copy-Between-Servers
+    Copies files between remote servers but runs from the local machine
+.parameter servernamefrom
+    Server to be copied from
+.parameter servernameto
+    Server to be copied to
+.parameter sourcefile
+    Path and name of the file(s) to be copied
+    Wildcards accepted
+    Example: "D:\software\myfile.txt"
+.parameter destination
+    The destination folder you want to copy the file(s) to
+    The drive is specified in the command so if you need it to be something other than D, change the command in the function.
+    Example syntax: "\software\"
+.parameter resetusername
+    Optional - used to reset the credential
+#>
+    param(
+    [Parameter(Mandatory)]
+    [string] $servernamefrom,
+    [Parameter(Mandatory)]
+    [string] $servernameto,
+    [Parameter(Mandatory)]
+    [string] $ssourcefile,
+    [Parameter(Mandatory)]
+    [string] $destination,
+    [switch] $resetusername = $false
+        )
+    if(!$Global:credential -or $resetusername){
+        Make-Credential
+    }
+    $username = $Global:credential.UserName
+    Invoke-Command -ComputerName $servernamefrom -Credential $Global:credential -ScriptBlock {
+        $cred = Get-Credential -Message "server copy" -UserName $Using:username ; New-PSDrive -Name J -PSProvider FileSystem -Root \\$using:servernameto\D$ -Credential $cred ; copy $using:sourcefile J:\$using:destination -Force}
+}
+
+
+
+
+
+function Restart-Server{
+<#
+.Description
+    Restart-Server
+    Forces a restart on the remote server
+.parameter servername
+    Server(s) to search
+.parameter resetusername
+    Optional - used to reset the credential
+#>
+    param(
+    [Parameter(Mandatory)]
+    [string] $servername,
+    [switch] $resetusername = $false
+        )
+    if(!$Global:credential -or $resetusername){
+        Make-Credential
+    }
+    Invoke-Command -ComputerName $servername -Credential $Global:credential -ScriptBlock {Restart-Computer -Force }
+}
+
+
+
+
+function Stop-Remote-Service{
+<#
+.Description
+    Stop-Remote-Service
+    Stops a service on the remote server
+.parameter servername
+    Server(s) to search
+.parameter servicename
+    Name of the service to stop
+.parameter resetusername
+    Optional - used to reset the credential
+#>
+    param(
+    [Parameter(Mandatory)]
+    [string] $servername,
+    [Parameter(Mandatory)]
+    [string] $servicename,
+    [switch] $resetusername = $false
+        )
+    if(!$Global:credential -or $resetusername){
+        Make-Credential
+    }
+    Invoke-Command -ComputerName $servername -Credential $Global:credential -ArgumentList $servicename -ScriptBlock {Stop-Service -Name $servicename -Force}
+}
+
+
+
+function Start-Remote-Service{
+<#
+.Description
+    Start-Remote-Service
+    Starts a service on the remote server
+.parameter servername
+    Server(s) to search
+.parameter servicename
+    Name of the service to stop
+.parameter resetusername
+    Optional - used to reset the credential
+#>
+    param(
+    [Parameter(Mandatory)]
+    [string] $servername,
+    [Parameter(Mandatory)]
+    [string] $servicename,
+    [switch] $resetusername = $false
+        )
+    if(!$Global:credential -or $resetusername){
+        Make-Credential
+    }
+    Invoke-Command -ComputerName $servername -Credential $Global:credential -ArgumentList $servicename -ScriptBlock {param ($servicename) Start-Service -Name $servicename}
+}
+
+
+
+
+function Disable-Remote-Service{
+<#
+.Description
+    Disable-Remote-Service
+    Disables a service on the remote server
+.parameter servername
+    Server(s) to search
+.parameter servicename
+    Name of the service to stop
+.parameter resetusername
+    Optional - used to reset the credential
+#>
+    param(
+    [Parameter(Mandatory)]
+    [string] $servername,
+    [Parameter(Mandatory)]
+    [string] $servicename,
+    [switch] $resetusername = $false
+        )
+    if(!$Global:credential -or $resetusername){
+        Make-Credential
+    }
+    Invoke-Command -ComputerName $servername -Credential $Global:credential -ArgumentList $servicename -ScriptBlock {param ($servicename) Set-Service -Name $servicename -StartupType Disabled}
+}
+
+
+
+
+function Update-Help{
+<#
+.Description
+    Update-Help
+    Updates the Help associated with all cmdlets in all modules on the remote server
+.parameter servername
+    Server(s) to search
+.parameter resetusername
+    Optional - used to reset the credential
+#>
+    param(
+    [Parameter(Mandatory)]
+    [string] $servername,
+    [switch] $resetusername = $false
+        )
+    if(!$Global:credential -or $resetusername){
+        Make-Credential
+    }
+    Invoke-Command -ComputerName $servername -Credential $Global:credential -ScriptBlock {Update-Help}
 }
 
