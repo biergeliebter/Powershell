@@ -289,17 +289,144 @@ function Get-AppPools{
 }
 
 
+function Start-AppPools
+<#
+.Description 
+    Start-AppPools 
+    Starts apppools on the remote server(s)
+.PARAMETER  servername
+    Server(s) to search
+.PARAMETER  appPools
+    Name of the AppPool to start - if blank starts them all
+.PARAMETER  resetUsername
+    Optional used to reset your username and pwd credential
+#>
+    param (
+        [Parameter(Mandatory)]
+        [string[]] $servername,
+        [string[]] $appPools = "ALL",  
+    	[switch] $resetUsername = $false
+    )
+	if(!$Global:credential -Or $resetUsername){
+		Make-Credential
+	}
+        if ($appPools -eq "ALL"){
+        Invoke-Command -ComputerName $servername -Credential $Global:credential -ScriptBlock {
+                Import-Module -Name WebAdministration
+                $apppools = Get-ChildItem IIS:\AppPools | select -ExpandProperty Name
+					foreach ($app in $apppools) {
+    						$app
+    						Start-WebAppPool -Name $app
+    					}}
+        }else{
+        Invoke-Command -ComputerName $servername -Credential $Global:credential -ScriptBlock {
+                Import-Module -Name WebAdministration
+                        foreach ($app in $using:appPools){
+    						Start-WebAppPool -Name $app
+    					}}
+        }
+}
 
 
 
+function Stop-AppPools
+<#
+.Description 
+    Stop-AppPools 
+    Stop AppPools on the remote server(s)
+.PARAMETER  servername
+    Server(s) to search
+.PARAMETER  appPools
+    AppPools to stop - if blank stops them all
+.PARAMETER  resetUsername
+    Optional used to reset your username and pwd credential
+#>
+    param (
+        [Parameter(Mandatory)]
+        [string[]] $servername,
+        [string[]] $appPools = "ALL",  
+    	[switch] $resetUsername = $false
+    )
+	if(!$Global:credential -Or $resetUsername){
+		Make-Credential
+	}
+        if ($appPools -eq "ALL"){
+        Invoke-Command -ComputerName $servername -Credential $Global:credential -ScriptBlock {
+                Import-Module -Name WebAdministration
+                $apppools = Get-ChildItem IIS:\AppPools | select -ExpandProperty Name
+					foreach ($app in $apppools) {
+    						$app
+    						Stop-WebAppPool -Name $app
+    					}}
+        }else{
+        Invoke-Command -ComputerName $servername -Credential $Global:credential -ScriptBlock {
+                Import-Module -Name WebAdministration
+                        foreach ($app in $using:appPools){
+    						Stop-WebAppPool -Name $app
+    					}}
+        }
+}
+
+
+function Restart-AppPools {
+<#
+.Description 
+    Restart-AppPools 
+    Restarts AppPools on the servers by stopping and starting them
+.PARAMETER  servername
+    Server(s) to search
+.PARAMETER  appPools
+    Name of the AppPool - if blank restarts them all
+.PARAMETER  resetUsername
+    Optional used to reset your username and pwd credential
+#>
+    param (
+        [Parameter(Mandatory)]
+        [string[]] $servername,
+        [string[]] $appPools = "ALL",  
+    	[switch] $resetUsername = $false
+    )
+	if(!$Global:credential -Or $resetUsername){
+		Make-Credential
+	}
+        if ($appPools -eq "ALL"){
+        Invoke-Command -ComputerName $servername -Credential $Global:credential -ScriptBlock {
+                Import-Module -Name WebAdministration
+                $apppools = Get-ChildItem IIS:\AppPools | select -ExpandProperty Name
+					foreach ($app in $apppools) {
+    						$app
+    						Restart-WebAppPool -Name $app
+    					}}
+        }else{
+        Invoke-Command -ComputerName $servername -Credential $Global:credential -ScriptBlock {
+                Import-Module -Name WebAdministration
+                        foreach ($app in $using:appPools){
+    						Restart-WebAppPool -Name $app
+    					}}
+        }
+}
 
 
 
+function Delete-Old-IIS-Logs{
+<#
+.Description 
+    Delete-Old-IIS-Logs 
+    Deletes IIS logs older than 90 days
+.PARAMETER  servername
+    Server(s) to search
+.PARAMETER  resetUsername
+    Optional used to reset your username and pwd credential
+#>
+    param(
+    [Parameter(Mandatory)]
+	[string[]] $servername,
+	[switch] $resetUsername = $false
+        )
+	if(!$Global:credential -Or $resetUsername){
+		Make-Credential
+	}
+	
+	Invoke-Command -ComputerName $servername -Credential $Global:credential -ScriptBlock {Get-ChildItem -Path D:\IISLogs -File -Recurse | Where-Object {$PSItem.CreationTime -lt (Get-Date).AddDays(-90)} | Remove-Item -Verbose}
+}
 
-
-Start-AppPools
-Stop-AppPools
-Restart-AppPools
-
-Change-IISPort
-Delete-Old-IIS-Logs
